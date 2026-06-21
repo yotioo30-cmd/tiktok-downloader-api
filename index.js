@@ -1,0 +1,86 @@
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const serverless = require('serverless-http');
+require('dotenv').config();
+
+const app = express();
+const { validateApiKey } = require('../middleware/auth');
+
+// Middleware
+app.use(helmet());
+app.use(cors());
+app.use(compression());
+app.use(express.json());
+
+// Rate Limiter
+const limiter = rateLimit({
+  windowMs: 60000,
+  max: 100,
+  message: {
+    status: false,
+    code: 429,
+    message: 'Too many requests, please try again later'
+  }
+});
+app.use('/api', limiter);
+
+// API Key Validation (except root)
+app.use('/api', (req, res, next) => {
+  if (req.path === '/') return next();
+  validateApiKey(req, res, next);
+});
+
+// Routes
+app.get('/api', (req, res) => {
+  res.json({
+    status: true,
+    creator: 'Tio',
+    message: 'TikTok Downloader API',
+    endpoints: {
+      '/api/tiktok': 'Download video',
+      '/api/info': 'Video info',
+      '/api/mp3': 'Audio only',
+      '/api/nowm': 'No watermark',
+      '/api/wm': 'With watermark'
+    }
+  });
+});
+
+app.get('/api/tiktok', require('./tiktok'));
+app.get('/api/info', require('./info'));
+app.get('/api/mp3', require('./mp3'));
+app.get('/api/nowm', require('./nowm'));
+app.get('/api/wm', require('./wm'));
+
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err.message);
+  res.status(500).json({
+    status: false,
+    code: 500,
+    message: err.message || 'Internal Server Error'
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    status: false,
+    code: 404,
+    message: 'Endpoint not found'
+  });
+});
+
+module.exports = serverless(app);
+
+// Local development
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`📚 Docs: http://localhost:${PORT}/api`);
+  });
+}
